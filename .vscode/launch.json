@@ -1,0 +1,57 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug",
+            "type": "cppdbg",
+            "request": "launch",
+            "args": [ ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": true,
+            "MIMode": "gdb",
+            "miDebuggerPath": "gdb",
+            "program": "${workspaceFolder}/${workspaceFolderBasename}.dbg.exe",
+            "preLaunchTask": "build debug"
+        },
+        {
+            "name": "Debug 32",
+            "type": "cppdbg",
+            "request": "launch",
+            "args": [ ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": true,
+            "MIMode": "gdb",
+            "miDebuggerPath": "gdb",
+            "program": "${workspaceFolder}/${workspaceFolderBasename}32.dbg.exe",
+            "preLaunchTask": "build debug 32"
+        },
+        {
+            "name": "Release",
+            "type": "cppdbg",
+            "request": "launch",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": true,
+            "program": "${workspaceFolder}/${workspaceFolderBasename}.exe",
+            "preLaunchTask": "build release"
+        },
+        {
+            "name": "Release 32",
+            "type": "cppdbg",
+            "request": "launch",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": true,
+            "program": "${workspaceFolder}/${workspaceFolderBasename}32.exe",
+            "preLaunchTask": "build release 32"
+        },
+    ]
+}

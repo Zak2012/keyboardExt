@@ -1,0 +1,41 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build debug",
+            "type": "shell",
+            "command": "make",
+            "args": [
+                "debug",
+            ],
+            "problemMatcher" : "$gcc"
+        },
+        {
+            "label": "build debug 32",
+            "type": "shell",
+            "command": "make",
+            "args": [
+                "debug32",
+            ],
+            "problemMatcher" : "$gcc"
+        },
+        {
+            "label": "build release",
+            "type": "shell",
+            "command": "make",
+            "args": [
+                "release",
+            ],
+        },
+        {
+            "label": "build release 32",
+            "type": "shell",
+            "command": "make",
+            "args": [
+                "release32",
+            ],
+        },
+    ]
+}
