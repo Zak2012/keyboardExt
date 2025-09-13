@@ -9,49 +9,17 @@
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
-            "externalConsole": true,
+            "externalConsole": false,
             "MIMode": "gdb",
-            "miDebuggerPath": "gdb",
-            "program": "${workspaceFolder}/${workspaceFolderBasename}.dbg.exe",
-            "preLaunchTask": "build debug"
-        },
-        {
-            "name": "Debug 32",
-            "type": "cppdbg",
-            "request": "launch",
-            "args": [ ],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}",
-            "environment": [],
-            "externalConsole": true,
-            "MIMode": "gdb",
-            "miDebuggerPath": "gdb",
-            "program": "${workspaceFolder}/${workspaceFolderBasename}32.dbg.exe",
-            "preLaunchTask": "build debug 32"
-        },
-        {
-            "name": "Release",
-            "type": "cppdbg",
-            "request": "launch",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}",
-            "environment": [],
-            "externalConsole": true,
-            "program": "${workspaceFolder}/${workspaceFolderBasename}.exe",
-            "preLaunchTask": "build release"
-        },
-        {
-            "name": "Release 32",
-            "type": "cppdbg",
-            "request": "launch",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}",
-            "environment": [],
-            "externalConsole": true,
-            "program": "${workspaceFolder}/${workspaceFolderBasename}32.exe",
-            "preLaunchTask": "build release 32"
-        },
+            "miDebuggerPath": "gdb.exe",
+            "program": "${workspaceFolder}/${workspaceFolderBasename}",
+            "setupCommands": [
+                {
+                "description": "Enable pretty-printing for gdb",
+                "text": "-enable-pretty-printing",
+                "ignoreFailures": true
+                },
+            ]
+        }
     ]
 }

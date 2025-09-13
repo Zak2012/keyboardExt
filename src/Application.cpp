@@ -1,203 +1,187 @@
+// Include standard libraries
 #include <iostream>
+#include <string>
+#include <vector>
 #include <chrono>
 #include <thread>
+#include <cstdlib>
+#include <bitset>
+#include <ctime>
+#include <fstream>
+#include <algorithm>
+// #include <condition_variable>
+// #include <mutex>
+
+#undef WINVER
+#define WINVER NTDDI_WIN10_19H1
+
+#undef _WIN32_WINNT
+#define _WIN32_WINNT _WIN32_WINNT_WIN10
 
 #include <windows.h>
-#include <strsafe.h>
+#include <Ntddvdeo.h>
+// #include <Initguid.h>
+#include <powrprof.h>
 #include <shellapi.h>
+#include <shlobj.h>
+#include <knownfolders.h>
 
-#include "keyboardExt.rc"
+static LRESULT LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam);
 
-#define MAX_LOADSTRING 100
-#define	WM_USER_SHELLICON WM_USER + 1
+static HHOOK LLKeyboardHook;
 
-static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam);
-LRESULT CALLBACK WindowProc(HWND   hwnd, UINT   uMsg, WPARAM wParam, LPARAM lParam);
+static std::bitset<256> keys;
 
-void sleep(int timems);
+static std::vector<GUID> Power(3);
 
+static HANDLE MonitorHndl;
 
-HINSTANCE hInstance = GetModuleHandle(0);
-HWND hWnd;
-HHOOK hHook;
+static std::string UserScreenshotFolder;
 
-HMENU hPopMenu;
-HICON hIconEnable;
-HICON hIconDisable;
-NOTIFYICONDATAA iconEnable;
-NOTIFYICONDATAA iconDisable;
+//https://davidxl.blogspot.com/2010/07/controla-el-nivel-de-backlight-de-una.html
+int8_t GetBrightness()
+{
+    int Bytes = 0;
+    DISPLAY_BRIGHTNESS DisplayBrightness;
 
-bool isEnable = true;
-bool keys[256];
+    DeviceIoControl(
+        (HANDLE) MonitorHndl,                // handle to device
+        IOCTL_VIDEO_QUERY_DISPLAY_BRIGHTNESS,  // dwIoControlCode
+        NULL,                            // lpInBuffer
+        0,                               // nInBufferSize
+        (LPVOID) &DisplayBrightness,            // output buffer
+        (DWORD) sizeof(DisplayBrightness),          // size of output buffer
+        (LPDWORD) &Bytes,       // number of bytes returned
+        NULL      // OVERLAPPED structure
+    );
+    return DisplayBrightness.ucDCBrightness;
+}
 
-int main(int argc, char* argv[]){
+void SetBrightness(uint8_t Level)
+{
+    int Bytes = 0;
+    DISPLAY_BRIGHTNESS DisplayBrightness = {2, Level, Level};
+    DeviceIoControl(
+        (HANDLE) MonitorHndl,                // handle to device
+        IOCTL_VIDEO_SET_DISPLAY_BRIGHTNESS,  // dwIoControlCode
+        &DisplayBrightness,                            // lpInBuffer
+        sizeof(DisplayBrightness),                               // nInBufferSize
+        NULL,            // output buffer
+        0,          // size of output buffer
+        (LPDWORD) &Bytes,       // number of bytes returned
+        NULL      // OVERLAPPED structure
+    );
+}
 
-    // Register the window class.
-    const char CLASS_NAME[]  ="KeyExt";
+void Cleanup()
+{
+    UnhookWindowsHookEx(LLKeyboardHook);
+}
 
-    WNDCLASS wc = {0};
-
-    wc.style		 = CS_HREDRAW | CS_VREDRAW;
-    wc.lpfnWndProc   = WindowProc;
-    wc.hInstance     = hInstance;
-    wc.lpszClassName = CLASS_NAME;
-
-    RegisterClass(&wc);
-
-    hWnd = CreateWindowExA(
-        0,
-        CLASS_NAME,
-        CLASS_NAME,
-        WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
-        NULL,
-        NULL,
-        hInstance,
+int main(int iArgCnt, char ** argv)
+{
+    MonitorHndl =  CreateFileA(
+        "\\\\.\\LCD", 
+        GENERIC_READ | GENERIC_WRITE, 
+        FILE_SHARE_READ | FILE_SHARE_WRITE, 
+        NULL, 
+        OPEN_EXISTING, 
+        0, //FILE_FLAG_OVERLAPPED , 
         NULL
     );
 
-    // Load the icon for high DPI.
-    hIconEnable = LoadIconA(hInstance, MAKEINTRESOURCE(IDI_ENABLE));
-    if(hIconEnable == NULL){
-        std::cout << "Error loading icon" << std::endl;
-        ExitProcess(1);
+    if (MonitorHndl == INVALID_HANDLE_VALUE)
+    {
+        std::cout << "error:" << GetLastError() << "\n";
+        return 1;
     }
 
-    hIconDisable = LoadIconA(hInstance, MAKEINTRESOURCE(IDI_DISABLE));
-    if(hIconDisable == NULL){
-        std::cout << "Error loading icon" << std::endl;
-        ExitProcess(1);
+    GUID buffer;
+    DWORD bufferSize = sizeof(buffer);
+    int index = 0;
+
+
+    while (PowerEnumerate(NULL, NULL, NULL, ACCESS_SCHEME, index, (UCHAR*)&buffer, &bufferSize) == ERROR_SUCCESS)
+    {
+        index++;
+        char GetName[1024];
+        uint32_t GetNameBufferSize = sizeof(GetName);
+
+        // Balanced = B, \0, a, \0, l ...
+        PowerReadFriendlyName(
+                                NULL, 
+                                &buffer, 
+                                &NO_SUBGROUP_GUID, 
+                                NULL, 
+                                (uint8_t *)GetName, 
+                                (DWORD *)&GetNameBufferSize);
+        
+        if (GetName[0] == 'P')
+        {
+            Power[0] = buffer;
+            // std::cout << GetName << "\n";
+        }
+        else if (GetName[0] == 'B')
+        {
+            Power[1] = buffer;
+            // std::cout << GetName << "\n";
+        }
+        else if (GetName[0] == 'H')
+        {
+            Power[2] = buffer;
+            // std::cout << GetName << "\n";
+        }
     }
-    //load enable icon to sys tray
-    iconEnable = {};
 
-    iconEnable.uVersion = NOTIFYICON_VERSION_4;
-    iconEnable.cbSize = sizeof(iconEnable);
-    iconEnable.hWnd = hWnd;
-    iconEnable.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
-    iconEnable.uCallbackMessage = WM_USER_SHELLICON; 
-    iconEnable.hIcon = hIconEnable;
-
-    StringCchCopy(iconEnable.szTip, ARRAYSIZE(iconEnable.szTip), CLASS_NAME);
-
-    //load enable icon to sys tray
-    iconDisable = {};
-
-    iconDisable.uVersion = NOTIFYICON_VERSION_4;
-    iconDisable.cbSize = sizeof(iconDisable);
-    iconDisable.hWnd = hWnd;
-    iconDisable.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
-    iconDisable.uCallbackMessage = WM_USER_SHELLICON; 
-    iconDisable.hIcon = hIconDisable;
-
-    StringCchCopy(iconDisable.szTip, ARRAYSIZE(iconDisable.szTip), CLASS_NAME);
-
-    // free icon handles
-    DestroyIcon(hIconEnable);
-    DestroyIcon(hIconDisable);
-
-    Shell_NotifyIconA(NIM_ADD, &iconEnable);
-
-    hHook = SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKeyboardProc, NULL, 0);
-
+    LLKeyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKeyboardProc, NULL, 0);
     MSG msg = {0};
+
+    std::atexit(Cleanup);
 
     while (GetMessage(&msg, NULL, 0, 0))
     {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
+        // if (ScreenshotCounter > 0)
+        // {
+        //     for (unsigned int i = 0; i < Threads.size(); i++)
+        //     {
+        //         if (Threads[i].IsReady())
+        //         {
+        //             std::cout << "Running on thread " << i << "\n";
+        //             Threads[i].Data((void *)"");
+        //             Threads[i].Exec();
+        //             ScreenshotCounter--;
+        //             break;
+        //         }
+        //     }
+        // }
     }
 
-    UnhookWindowsHookEx(hHook);
-    Shell_NotifyIcon(NIM_DELETE,&iconEnable);
     return 0;
 }
 
-void sleep(int timems){
-    std::this_thread::sleep_for(std::chrono::milliseconds(timems));
-}
-
-void exitCleanup(){
-    UnhookWindowsHookEx(hHook);
-    Shell_NotifyIcon(NIM_DELETE,&iconEnable);
-    ExitProcess(0);
-}
-
-void enableExt(){
-    Shell_NotifyIconA(NIM_MODIFY, &iconEnable);
-    isEnable = true;
-}
-
-void disableExt(){
-    Shell_NotifyIconA(NIM_MODIFY, &iconDisable);
-   isEnable = false;
-}
-
-LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam){
-    POINT lpClickPoint;
-    switch (uMsg)
-    {
-    case WM_USER_SHELLICON: 
-
-        // systray msg callback 
-        switch(LOWORD(lParam)) 
-        {
-        case WM_LBUTTONDOWN:
-            unsigned int uFlag = MF_BYPOSITION|MF_STRING;
-            GetCursorPos(&lpClickPoint);
-            hPopMenu = CreatePopupMenu();
-            if(isEnable)
-                InsertMenuA(hPopMenu,0xFFFFFFFF,uFlag,IDM_DISABLE,"Disable (win + esc)");
-            else
-                InsertMenuA(hPopMenu,0xFFFFFFFF,uFlag,IDM_ENABLE,"Enable (win + esc)");
-
-
-            InsertMenuA(hPopMenu,0xFFFFFFFF,MF_SEPARATOR,IDM_SEP,NULL);
-            InsertMenuA(hPopMenu,0xFFFFFFFF,uFlag,IDM_QUIT,"Quit (win + del)");
-
-            SetForegroundWindow(hWnd);
-            TrackPopupMenu(hPopMenu,TPM_LEFTALIGN|TPM_LEFTBUTTON|TPM_BOTTOMALIGN,lpClickPoint.x, lpClickPoint.y,0,hWnd,NULL);
-            return true; 
-        }
-        break;
-
-    case WM_COMMAND:
-        // Parse the menu selections:
-        switch (LOWORD(wParam))
-        {
-        case IDM_QUIT:
-            exitCleanup();
-            break;
-        case IDM_ENABLE:
-            enableExt();
-            break;
-        case IDM_DISABLE:
-            disableExt();
-            break;
-        default:
-            return DefWindowProcA(hWnd, uMsg, wParam, lParam);
-        }
-        break;
-
-    case WM_CLOSE:
-        exitCleanup();
-        break;
-
-    default:
-        return DefWindowProcA(hWnd, uMsg, wParam, lParam);
-    }
-}
-
-bool pressKey(unsigned int vKey){
+bool HoldKey(unsigned int vKey){
     INPUT inputs[1] = {};
     ZeroMemory(inputs, sizeof(inputs));
     inputs[0].type = INPUT_KEYBOARD;
     inputs[0].ki.wVk = vKey;
     return SendInput(ARRAYSIZE(inputs), inputs, sizeof(INPUT));
+}
+
+bool PressKey(unsigned int vKey){
+    INPUT inputs[2] = {};
+    ZeroMemory(inputs, sizeof(inputs));
+    inputs[0].type = INPUT_KEYBOARD;
+    inputs[0].ki.wVk = vKey;
+    inputs[1].type = INPUT_KEYBOARD;
+    inputs[1].ki.wVk = vKey;
+    inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    return SendInput(ARRAYSIZE(inputs), inputs, sizeof(INPUT));
 
 }
 
-bool releaseKey(unsigned int vKey){
+bool ReleaseKey(unsigned int vKey){
     INPUT inputs[1] = {};
     ZeroMemory(inputs, sizeof(inputs));
     inputs[0].type = INPUT_KEYBOARD;
@@ -206,70 +190,96 @@ bool releaseKey(unsigned int vKey){
     return SendInput(ARRAYSIZE(inputs), inputs, sizeof(INPUT));
 }
 
-static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
+static LRESULT LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
 {
-    int key = ((LPKBDLLHOOKSTRUCT)lParam)->vkCode;
-    switch (wParam)
+    KBDLLHOOKSTRUCT *LLKbd = (KBDLLHOOKSTRUCT *)lParam;
+    // int key = LLKeyboard->vkCode;
+    if (nCode == HC_ACTION)
     {
-    case WM_KEYDOWN:
-        keys[key] = true;
-        break;
-    case WM_KEYUP:
-        keys[key] = false;
-        break;
-    }
-    if ((wParam == WM_KEYDOWN || wParam == WM_KEYUP) && lParam != NULL)
-    {
-        INPUT inputs[2] = {};
-        ZeroMemory(inputs, sizeof(inputs));
-        bool winKey = (keys[VK_LWIN] || keys[VK_RWIN]);
-        if(winKey && keys[VK_ESCAPE])
+        if (wParam == WM_KEYUP)
         {
-            isEnable ? disableExt() : enableExt();
-            return 1;
+            
+            keys[LLKbd->vkCode] = false;
+            switch (LLKbd->vkCode)
+            {
+                case VK_F1:
+                    return 1;
+                case VK_F2:
+                    ReleaseKey(VK_VOLUME_DOWN);
+                    return 1;
+                case VK_F3:
+                    ReleaseKey(VK_VOLUME_UP);
+                    return 1;
+                case VK_F5:
+                    return 1;
+                case VK_F7:
+                    return 1;
+                case VK_F8:
+                    return 1;
+                case VK_F9:
+                    return 1;
+                case VK_F10:
+                    return 1;
+                case VK_F11:
+                    return 1;
+            }
         }
-        else if(winKey && keys[VK_DELETE])
+        if (wParam == WM_KEYDOWN)
         {
-            exitCleanup();
-            return 1;
-        }
-        else if(keys[VK_F1] && (!isEnable != !winKey)){
-            keys[VK_F1] = false;
-            pressKey(VK_VOLUME_MUTE);
-            releaseKey(VK_VOLUME_MUTE);
-            return 1;
-        }
-        else if(keys[VK_F2] && (!isEnable != !winKey)){
-            keys[VK_F2] = false;
-            pressKey(VK_VOLUME_DOWN);
-            releaseKey(VK_VOLUME_DOWN);
-            return 1;
-        }
-        else if(keys[VK_F3] && (!isEnable != !winKey)){
-            keys[VK_F3] = false;
-            pressKey(VK_VOLUME_UP);
-            releaseKey(VK_VOLUME_DOWN);
-            return 1;
-        }
-        else if(keys[VK_F4] && (!isEnable != !winKey)){
-            keys[VK_F4] = false;
-            pressKey(VK_MEDIA_PREV_TRACK);
-            releaseKey(VK_MEDIA_PREV_TRACK);
-            return 1;
-        }
-        else if(keys[VK_F5] && (!isEnable != !winKey)){
-            keys[VK_F5] = false;
-            pressKey(VK_MEDIA_PLAY_PAUSE);
-            releaseKey(VK_MEDIA_PLAY_PAUSE);
-            return 1;
-        }
-        else if(keys[VK_F6] && (!isEnable != !winKey)){
-            keys[VK_F6] = false;
-            pressKey(VK_MEDIA_NEXT_TRACK);
-            releaseKey(VK_MEDIA_NEXT_TRACK);
-            return 1;
-        }
-    }
+            bool Lock = LOWORD(GetKeyState(VK_SCROLL));
+            bool KeyState = keys[LLKbd->vkCode];
+            keys[LLKbd->vkCode] = true;
+            // std::cout << LLKbd->vkCode << "\n";
+            if (!Lock)
+            {
 
+                switch (LLKbd->vkCode)
+                {
+                    case VK_F1:
+                        if (!KeyState)
+                        {
+                            PressKey(VK_VOLUME_MUTE);
+                        }
+                        return 1;
+                    case VK_F2:
+                        HoldKey(VK_VOLUME_DOWN);
+                        return 1;
+                    case VK_F3:
+                        HoldKey(VK_VOLUME_UP);
+                        return 1;
+                    case VK_F5:
+                        if (!KeyState)
+                        {
+                            PressKey(VK_MEDIA_PLAY_PAUSE);
+                        }
+                        return 1;
+                    case VK_F7:
+                            SetBrightness(std::max(0,GetBrightness() - 2));
+                        return 1;
+                    case VK_F8:
+                            SetBrightness(std::min(100,GetBrightness() + 2));
+                        return 1;
+                    case VK_F9:
+                        if (!KeyState)
+                        {
+                            PowerSetActiveScheme(NULL, &(Power[0]));
+                        }
+                        return 1;
+                    case VK_F10:
+                        if (!KeyState)
+                        {
+                            PowerSetActiveScheme(NULL, &(Power[1]));
+                        }
+                        return 1;
+                    case VK_F11:
+                        if (!KeyState)
+                        {
+                            PowerSetActiveScheme(NULL, &(Power[2]));
+                        }
+                        return 1;
+                }
+            }
+        }
+    }
     return CallNextHookEx(NULL, nCode, wParam, lParam);
 }

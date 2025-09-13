@@ -1,31 +1,55 @@
-CC = x86_64-w64-mingw32-g++
-CC32 = i686-w64-mingw32-g++
-STD = c++2a
-APP_NAME = keyboardExt
+## Compiler
+CCXX = g++
+CC = gcc
 
-# available var {CC,CC32,INC,LIB,SRC,LIB,STD,APP_NAME}
+## Delete Commmand
+DC = del
 
-INC	= ./include
-LIBPATH = ./lib
-SRC = ./src/*.cpp
-LIB = -lUser32 -lShell32 -lKernel32
-CMDCOM =-Wall -std=$(STD) $(SRC) $(APP_NAME).res -I$(INC) -L$(LIBPATH) $(LIB) -o $(APP_NAME)
+## Standard
+STDXX = c++2a
+STD = c17
 
-res :
-	windres ./src/$(APP_NAME).rc -O coff -o $(APP_NAME).res
+## Executables Name
+EXE = $(notdir $(CURDIR))
 
-debug : res
-	ccache $(CC) -ggdb3 $(CMDCOM).dbg.exe
+## Project Directories
+INCDIR = include ##C:\Users\user\Documents\.proj\.proj\data\cpp\include
+LIBDIR = lib
+OBJDIR = obj
+SRCDIR = src
 
-debug32 : res
-	ccache $(CC32) -ggdb3 $(CMDCOM)32.dbg.exe
+## Define Source
+SOURCE = Application.cpp ## wmi.cpp wmiresult.cpp diaa_sami_comsupp.cpp
+LIBS = powrprof uuid ole32 #Dxva2 kernel32 wbemuuid powrprof gdi32
 
-release : res
-	ccache $(CC) -mwindows $(CMDCOM).exe
+OBJECT = $(addsuffix .o, $(SOURCE))
 
-release32 : res
-	ccache $(CC32) $(CMDCOM)32.exe
+## Define File
+SRC = $(addprefix $(SRCDIR)/, $(SOURCE))
+INC = $(addprefix -I, $(INCDIR))
+OBJ = $(addprefix $(OBJDIR)/, $(OBJECT))
+LIB = $(addprefix -l, $(LIBS))
 
-target : dependencies
-	action
+## Define Flags
+CFLAGSXX = -c -g3 -Wall -std=$(STDXX) $(INC)
+CFLAGS = -c -g3 -Wall -std=$(STD) $(INC)
+LFLAGS = -L$(LIBDIR) $(LIB) -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive -static-libgcc -static-libstdc++ -mwindows
 
+## Define Scope
+all : $(SRC) $(EXE)
+
+## Compile C++ Files
+$(OBJDIR)/%.cpp.o : $(SRCDIR)/%.cpp
+	$(CCXX) $< $(CFLAGSXX) -o $@
+
+## Compile C Files
+$(OBJDIR)/%.c.o : $(SRCDIR)/%.c
+	$(CC) $< $(CFLAGS) -o $@
+
+## Link Object Files
+$(EXE) : $(OBJ)
+	$(CCXX) $^ $(LFLAGS) -o $@
+
+## Clean Object Files
+clean : $(subst /,\,$(OBJ))
+	-$(DC) $^

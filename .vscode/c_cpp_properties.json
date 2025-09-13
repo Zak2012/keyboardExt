@@ -4,7 +4,8 @@
             "name": "Win32",
             "includePath": [
                 "${default}",
-                "${workspaceFolder}/include"
+                "${workspaceFolder}/include",
+                "C:/Users/user/Documents/.proj/.proj/data/cpp/include"
             ],
             "cStandard": "c17",
             "cppStandard": "c++20",
